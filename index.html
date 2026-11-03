@@ -197,7 +197,7 @@
           </div>
           <div class="field full">
             <label for="baseTopic">Tópico base da residência</label>
-            <input id="baseTopic" type="text" spellcheck="false" value="aula/automacao/residencia01" placeholder="ex.: casa/sala" autocomplete="off">
+            <input id="baseTopic" type="text" spellcheck="false" value="senaihorizontina" placeholder="ex.: casa/sala" autocomplete="off">
             <div class="field-note">Use a mesma raiz no ESP32 ou no programa que controla os relés.</div>
           </div>
           <div class="field">
@@ -329,8 +329,8 @@
 
     function updateTopicExamples() {
       const base = normalizedBaseTopic() || 'sua/casa';
-      $('commandTopicExample').textContent = `${base}/luz_sala/command`;
-      $('stateTopicExample').textContent = `${base}/luz_sala/state`;
+      $('commandTopicExample').textContent = `${base}/sala/luz`;
+      $('stateTopicExample').textContent = `${base}/sala/luz/estado`;
     }
 
     function clearPending(device) {
@@ -356,11 +356,20 @@
 
     function receiveMessage(topic, payload) {
       const prefix = activeBaseTopic + '/';
-      if (!topic.startsWith(prefix)) return;
-      const rest = topic.slice(prefix.length).split('/');
-      const id = rest[0];
-      const channel = rest[1];
-      if (!devices[id] || !['state', 'status'].includes(channel)) return;
+      let id = null;
+
+      // Tópico de estado correspondente ao comando original senaihorizontina/sala/luz.
+      if (topic === `${activeBaseTopic}/sala/luz/estado`) {
+        id = 'luz_sala';
+      } else {
+        if (!topic.startsWith(prefix)) return;
+        const rest = topic.slice(prefix.length).split('/');
+        const channel = rest[1];
+        if (!['state', 'status'].includes(channel)) return;
+        id = rest[0];
+      }
+
+      if (!devices[id]) return;
       const value = decodeState(payload.toString());
       if (value === null) {
         addLog(`Estado não reconhecido em ${topic}: ${payload.toString()}`, 'warn');
@@ -431,9 +440,14 @@
         setConnectionStatus('connected', 'Conectado ao MQTT');
         $('connectButton').disabled = false;
         addLog(`Conectado. Client ID: ${clientId}`, 'ok');
-        client.subscribe([`${activeBaseTopic}/+/state`, `${activeBaseTopic}/+/status`], { qos: 0 }, (error) => {
+        const stateTopics = [
+          `${activeBaseTopic}/sala/luz/estado`,
+          `${activeBaseTopic}/+/state`,
+          `${activeBaseTopic}/+/status`
+        ];
+        client.subscribe(stateTopics, { qos: 0 }, (error) => {
           if (error) addLog(`Erro ao assinar tópicos de estado: ${error.message}`, 'error');
-          else addLog(`Inscrito em ${activeBaseTopic}/+/state e ${activeBaseTopic}/+/status`, 'ok');
+          else addLog(`Inscrito em ${stateTopics.join(', ')}`, 'ok');
         });
       });
       client.on('reconnect', () => {
@@ -481,7 +495,9 @@
         addLog(`Comando não enviado: sem conexão (${device.label}).`, 'error');
         return;
       }
-      const topic = `${activeBaseTopic}/${id}/command`;
+      const topic = id === 'luz_sala'
+        ? `${activeBaseTopic}/sala/luz`
+        : `${activeBaseTopic}/${id}/command`;
       const payload = requestedState ? 'ON' : 'OFF';
       device.pending = payload;
       renderDevice(id);
