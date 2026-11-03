@@ -53,11 +53,13 @@ Na página Casa Conectada:
 
 O ESP32 recebe `ON` ou `OFF` no tópico `.../luz_sala/command` e publica o estado confirmado no tópico `.../luz_sala/state`, com retain habilitado. Assim, a página também recupera o último estado publicado quando se conecta.
 
-## 4. Pino e segurança elétrica
+## 4. LED integrado da placa
 
-O firmware usa GPIO 2 como saída ativa em nível HIGH, adequado para o LED de teste usado no código original. Alguns módulos de relé são ativos em LOW; nesse caso, a lógica do pino precisa ser invertida.
+O firmware controla o LED integrado da própria placa, sem precisar conectar um LED externo.
 
-Não ligue uma lâmpada da rede elétrica diretamente ao ESP32. Use um módulo de relé apropriado, isolado e dimensionado para a carga, com montagem supervisionada.
+O código utiliza `LED_BUILTIN`, quando essa constante é definida pelo pacote de placas. Em placas ESP32 DevKit V1 comuns, o LED azul integrado costuma estar ligado ao GPIO 2; caso a definição não exista, o firmware usa GPIO 2 como padrão.
+
+A posição e a polaridade do LED integrado variam entre fabricantes e modelos. Se o LED não acender, confira o esquema da sua placa e ajuste `LED_BUILTIN` ou a lógica HIGH/LOW. O firmware assume que HIGH acende e LOW apaga.
 
 O firmware mantém `net.setInsecure()` para simplificar o primeiro teste TLS. Isso criptografa o tráfego, mas não valida a identidade do servidor. Para uso definitivo, instale o certificado CA do EMQX e substitua por `net.setCACert()`.
 
