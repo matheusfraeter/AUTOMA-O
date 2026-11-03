@@ -196,9 +196,14 @@
             <div class="field-note">O navegador precisa de MQTT sobre WebSocket: normalmente <code>wss://</code> para conexão segura.</div>
           </div>
           <div class="field full">
-            <label for="baseTopic">Tópico base da residência</label>
-            <input id="baseTopic" type="text" spellcheck="false" value="senaihorizontina" placeholder="ex.: casa/sala" autocomplete="off">
-            <div class="field-note">Use a mesma raiz no ESP32 ou no programa que controla os relés.</div>
+            <label for="baseTopic">Raiz do tópico de comando</label>
+            <input id="baseTopic" type="text" spellcheck="false" value="senaihorizontina" placeholder="ex.: senaihorizontina" autocomplete="off">
+            <div class="field-note">O ESP32 original recebe a luz da sala em <code>senaihorizontina/sala/luz</code>.</div>
+          </div>
+          <div class="field full">
+            <label for="statusTopic">Tópico de retorno configurado no ESP32</label>
+            <input id="statusTopic" type="text" spellcheck="false" value="senai/esp32/estado" placeholder="ex.: senai/esp32/estado" autocomplete="off">
+            <div class="field-note">No firmware original, esse é o PUB padrão do WiFiManager. Precisa ser igual ao campo PUBLISHER salvo no ESP32.</div>
           </div>
           <div class="field">
             <label for="mqttUsername">Usuário EMQX</label>
@@ -221,8 +226,8 @@
         <div class="topic-guide">
           <strong>Formato dos tópicos</strong><br>
           Comandos: <code id="commandTopicExample">aula/automacao/residencia01/luz_sala/command</code><br>
-          Estados: <code id="stateTopicExample">aula/automacao/residencia01/luz_sala/state</code><br>
-          Payloads enviados: <code>ON</code> ou <code>OFF</code>. O dispositivo deve publicar o estado de volta para atualizar o painel no modo real.
+          Retorno do ESP32: <code id="stateTopicExample">senai/esp32/estado</code><br>
+          O firmware original responde com <code>senaihorizontina/sala/luz=ON</code> ou <code>=OFF</code>.
         </div>
       </div>
 
@@ -262,15 +267,21 @@
     const $ = (id) => document.getElementById(id);
     const brokerInput = $('brokerUrl');
     const baseTopicInput = $('baseTopic');
+    const statusTopicInput = $('statusTopic');
     const usernameInput = $('mqttUsername');
     const passwordInput = $('mqttPassword');
     const demoCheckbox = $('demoMode');
     let client = null;
     let activeBaseTopic = '';
+    let activeStatusTopic = '';
     let toastTimer = null;
 
     function normalizedBaseTopic() {
       return baseTopicInput.value.trim().replace(/^\/+|\/+$/g, '');
+    }
+
+    function normalizedStatusTopic() {
+      return statusTopicInput.value.trim().replace(/^\/+|\/+$/g, '');
     }
 
     function showToast(message) {
@@ -328,9 +339,9 @@
     }
 
     function updateTopicExamples() {
-      const base = normalizedBaseTopic() || 'sua/casa';
+      const base = normalizedBaseTopic() || 'senaihorizontina';
       $('commandTopicExample').textContent = `${base}/sala/luz`;
-      $('stateTopicExample').textContent = `${base}/sala/luz/estado`;
+      $('stateTopicExample').textContent = normalizedStatusTopic() || 'senai/esp32/estado';
     }
 
     function clearPending(device) {
@@ -355,31 +366,49 @@
     }
 
     function receiveMessage(topic, payload) {
-      const prefix = activeBaseTopic + '/';
+      const rawPayload = payload.toString().trim();
       let id = null;
+      let value = null;
 
-      // Tópico de estado correspondente ao comando original senaihorizontina/sala/luz.
-      if (topic === `${activeBaseTopic}/sala/luz/estado`) {
+      // O firmware original publica "topicoDoComando=ON" ou "=OFF"
+      // no tópico PUBLISHER configurado no WiFiManager.
+      if (topic === activeStatusTopic) {
+        const separator = rawPayload.lastIndexOf('=');
+        if (separator < 0) {
+          addLog(`Retorno MQTT fora do formato esperado em ${topic}: ${rawPayload}`, 'warn');
+          return;
+        }
+
+        const commandTopic = rawPayload.slice(0, separator).trim();
+        if (commandTopic !== `${activeBaseTopic}/sala/luz`) return;
+
         id = 'luz_sala';
+        value = decodeState(rawPayload.slice(separator + 1));
       } else {
-        if (!topic.startsWith(prefix)) return;
-        const rest = topic.slice(prefix.length).split('/');
-        const channel = rest[1];
-        if (!['state', 'status'].includes(channel)) return;
-        id = rest[0];
+        const prefix = activeBaseTopic + '/';
+        if (topic === `${activeBaseTopic}/sala/luz/estado`) {
+          id = 'luz_sala';
+        } else {
+          if (!topic.startsWith(prefix)) return;
+          const rest = topic.slice(prefix.length).split('/');
+          const channel = rest[1];
+          if (!['state', 'status'].includes(channel)) return;
+          id = rest[0];
+        }
+        value = decodeState(rawPayload);
       }
 
       if (!devices[id]) return;
-      const value = decodeState(payload.toString());
       if (value === null) {
-        addLog(`Estado não reconhecido em ${topic}: ${payload.toString()}`, 'warn');
+        addLog(`Estado não reconhecido em ${topic}: ${rawPayload}`, 'warn');
         return;
       }
+
       const device = devices[id];
       clearPending(device);
       device.state = value;
       renderDevice(id);
-      addLog(`Estado recebido: ${device.label} ${value ? 'LIGADO' : 'DESLIGADO'} (${topic})`, 'ok');
+      addLog(`Estado confirmado pelo ESP32: ${device.label} ${value ? 'LIGADO' : 'DESLIGADO'} (${topic})`, 'ok');
     }
 
     function connectMqtt() {
@@ -409,8 +438,15 @@
         baseTopicInput.focus();
         return;
       }
+      const statusTopic = normalizedStatusTopic();
+      if (!statusTopic || /[+#\s]/.test(statusTopic)) {
+        showToast('Informe o tópico PUBLISHER configurado no ESP32, sem espaços, + ou #.');
+        statusTopicInput.focus();
+        return;
+      }
 
       activeBaseTopic = base;
+      activeStatusTopic = statusTopic;
       updateTopicExamples();
       const clientId = 'casa_html_' + Math.random().toString(16).slice(2, 10);
       const options = {
@@ -441,6 +477,7 @@
         $('connectButton').disabled = false;
         addLog(`Conectado. Client ID: ${clientId}`, 'ok');
         const stateTopics = [
+          activeStatusTopic,
           `${activeBaseTopic}/sala/luz/estado`,
           `${activeBaseTopic}/+/state`,
           `${activeBaseTopic}/+/status`
@@ -559,6 +596,7 @@
       addLog('Comando de desligamento enviado aos dispositivos disponíveis.', 'warn');
     });
     baseTopicInput.addEventListener('input', updateTopicExamples);
+    statusTopicInput.addEventListener('input', updateTopicExamples);
     demoCheckbox.addEventListener('change', () => {
       $('modeBadge').textContent = demoCheckbox.checked ? 'Modo demonstração' : 'Modo hardware';
       $('modeBadge').style.background = demoCheckbox.checked ? 'rgba(251,191,36,.1)' : 'rgba(90,167,255,.12)';
