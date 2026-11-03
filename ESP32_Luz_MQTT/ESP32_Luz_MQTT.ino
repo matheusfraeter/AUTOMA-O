@@ -51,7 +51,12 @@ char pub_topic_1[96] =
 // Pinos
 // -----------------------------------------------------------------------------
 
-const uint8_t PIN_SALA_LUZ = 2;
+// Usa o LED definido pela placa no pacote ESP32. Em placas DevKit comuns,
+// LED_BUILTIN normalmente corresponde ao GPIO 2. O fallback mantém compatibilidade.
+#ifndef LED_BUILTIN
+  #define LED_BUILTIN 2
+#endif
+const uint8_t PIN_LED_INTEGRADO = LED_BUILTIN;
 const uint8_t PIN_BOTAO_CFG = 0;
 
 bool shouldSaveConfig = false;
@@ -137,9 +142,9 @@ void onMessage(char* topic, byte* payload, unsigned int length) {
     return;
   }
 
-  digitalWrite(PIN_SALA_LUZ, estadoSala ? HIGH : LOW);
+  digitalWrite(PIN_LED_INTEGRADO, estadoSala ? HIGH : LOW);
 
-  Serial.print("[GPIO] Luz da sala: ");
+  Serial.print("[LED INTEGRADO] Luz da sala: ");
   Serial.println(estadoSala ? "LIGADA" : "DESLIGADA");
 
   // Publica somente ON/OFF no tópico de estado, sem concatenar o tópico.
@@ -393,8 +398,8 @@ void setup() {
   Serial.begin(115200);
   delay(300);
 
-  pinMode(PIN_SALA_LUZ, OUTPUT);
-  digitalWrite(PIN_SALA_LUZ, LOW);
+  pinMode(PIN_LED_INTEGRADO, OUTPUT);
+  digitalWrite(PIN_LED_INTEGRADO, LOW);
   estadoSala = false;
 
   pinMode(PIN_BOTAO_CFG, INPUT_PULLUP);
