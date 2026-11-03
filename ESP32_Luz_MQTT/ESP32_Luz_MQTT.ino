@@ -42,21 +42,18 @@ char mqtt_user[40] = "";
 char mqtt_pass[64] = "";
 
 char sub_topic_1[96] =
-    "aula/automacao/residencia01/luz_sala/command";
+    "senaihorizontina/sala/luz";
 
 char pub_topic_1[96] =
-    "aula/automacao/residencia01/luz_sala/state";
+    "senaihorizontina/sala/luz/estado";
 
 // -----------------------------------------------------------------------------
 // Pinos
 // -----------------------------------------------------------------------------
 
-// Usa o LED definido pela placa no pacote ESP32. Em placas DevKit comuns,
-// LED_BUILTIN normalmente corresponde ao GPIO 2. O fallback mantém compatibilidade.
-#ifndef LED_BUILTIN
-  #define LED_BUILTIN 2
-#endif
-const uint8_t PIN_LED_INTEGRADO = LED_BUILTIN;
+// O projeto original identifica o LED integrado no GPIO 2.
+// Usamos o pino explicitamente para manter o hardware compatível com a aula.
+const uint8_t PIN_LED_INTEGRADO = 2;
 const uint8_t PIN_BOTAO_CFG = 0;
 
 bool shouldSaveConfig = false;
@@ -180,20 +177,22 @@ void setupWiFi() {
           copiarCampo(json, "sub_topic_1", sub_topic_1, sizeof(sub_topic_1));
           copiarCampo(json, "pub_topic_1", pub_topic_1, sizeof(pub_topic_1));
 
-          // Migra os tópicos padrão usados pela versão anterior do projeto.
+          // Migra configurações antigas para os tópicos originais da aula.
           if (strcmp(sub_topic_1, "senai/#") == 0 ||
-              strcmp(sub_topic_1, "senaihorizontina/#") == 0) {
+              strcmp(sub_topic_1, "senaihorizontina/#") == 0 ||
+              strcmp(sub_topic_1, "aula/automacao/residencia01/luz_sala/command") == 0) {
             strlcpy(
                 sub_topic_1,
-                "aula/automacao/residencia01/luz_sala/command",
+                "senaihorizontina/sala/luz",
                 sizeof(sub_topic_1)
             );
           }
 
-          if (strcmp(pub_topic_1, "senai/esp32/estado") == 0) {
+          if (strcmp(pub_topic_1, "senai/esp32/estado") == 0 ||
+              strcmp(pub_topic_1, "aula/automacao/residencia01/luz_sala/state") == 0) {
             strlcpy(
                 pub_topic_1,
-                "aula/automacao/residencia01/luz_sala/state",
+                "senaihorizontina/sala/luz/estado",
                 sizeof(pub_topic_1)
             );
           }
