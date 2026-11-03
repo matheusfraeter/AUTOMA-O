@@ -15,7 +15,7 @@ python .\aplicar_atualizacao_html.py
 
 O script cria `index.html.bak` e altera:
 - endpoint do navegador para `wss://w8767ca9.ala.us-east-1.emqxsl.com:8084/mqtt`;
-- tópico base para `aula/automacao/residencia01`;
+- tópico base para `senaihorizontina`;
 - modo hardware como padrão;
 - credenciais como campos digitados pelo usuário, sem colocá-las no arquivo público;
 - cartões de ar-condicionado, TV e ventilador como não configurados no ESP32 atual.
@@ -37,8 +37,8 @@ Na primeira inicialização:
 3. A senha do portal será exibida no Monitor Serial.
 4. Entre no portal e configure o Wi-Fi e as credenciais de usuário/senha MQTT do EMQX.
 5. Mantenha os tópicos:
-   - SUB: `aula/automacao/residencia01/luz_sala/command`
-   - PUB: `aula/automacao/residencia01/luz_sala/state`
+   - SUB: `senaihorizontina/sala/luz`
+   - PUB: `senaihorizontina/sala/luz/estado`
 
 O firmware usa MQTT com TLS na porta `8883`. O HTML usa WebSocket seguro (WSS) na porta `8084`, caminho `/mqtt`.
 
