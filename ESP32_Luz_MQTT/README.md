@@ -1,73 +1,48 @@
-# Atualização da automação residencial — ESP32 + EMQX
+# Integração do painel HTML com o ESP32 original
 
-## O que foi preparado
+Esta atualização foi preparada para funcionar **sem alterar nem regravar o firmware original do ESP32**.
 
-- `aplicar_atualizacao_html.py`: atualiza o `index.html` existente, preservando o layout. Cria um backup antes de gravar.
-- `ESP32_Luz_MQTT.ino`: firmware do ESP32 compatível com o painel HTML.
+## Configuração no HTML
 
-## 1. Atualizar o HTML
+- Broker WSS: `wss://w8767ca9.ala.us-east-1.emqxsl.com:8084/mqtt`
+- Raiz do comando: `senaihorizontina`
+- Tópico PUBLISHER de retorno: `senai/esp32/estado` (padrão do sketch original)
 
-Coloque `aplicar_atualizacao_html.py` na mesma pasta do `index.html` e execute:
+O site publica `ON` ou `OFF` em:
 
-```powershell
-python .\aplicar_atualizacao_html.py
+```text
+senaihorizontina/sala/luz
 ```
 
-O script cria `index.html.bak` e altera:
-- endpoint do navegador para `wss://w8767ca9.ala.us-east-1.emqxsl.com:8084/mqtt`;
-- tópico base para `senaihorizontina`;
-- modo hardware como padrão;
-- credenciais como campos digitados pelo usuário, sem colocá-las no arquivo público;
-- cartões de ar-condicionado, TV e ventilador como não configurados no ESP32 atual.
+O sketch original confirma a execução publicando no tópico PUBLISHER:
 
-## 2. Gravar o ESP32
+```text
+senaihorizontina/sala/luz=ON
+senaihorizontina/sala/luz=OFF
+```
 
-Abra `ESP32_Luz_MQTT.ino` na Arduino IDE.
+O HTML escuta esse tópico de retorno e extrai o estado da mensagem.
 
-Instale as bibliotecas:
-- PubSubClient
-- WiFiManager
-- ArduinoJson
+## Única configuração necessária no ESP32 (sem modificar código)
 
-Selecione sua placa ESP32 e faça a gravação.
+O sketch original tem como valor padrão de SUBSCRIBER `senai/#`, que não corresponde ao comando acima. Abra o portal WiFiManager já utilizado pelo seu ESP32 e ajuste somente o campo:
 
-Na primeira inicialização:
-1. Abra o Monitor Serial em 115200 baud.
-2. Procure a rede `FRAETER-SETUP`.
-3. A senha do portal será exibida no Monitor Serial.
-4. Entre no portal e configure o Wi-Fi e as credenciais de usuário/senha MQTT do EMQX.
-5. Mantenha os tópicos:
-   - SUB: `senaihorizontina/sala/luz`
-   - PUB: `senaihorizontina/sala/luz/estado`
+- SUBSCRIBER: `senaihorizontina/#`
 
-O firmware usa MQTT com TLS na porta `8883`. O HTML usa WebSocket seguro (WSS) na porta `8084`, caminho `/mqtt`.
+Mantenha o PUBLISHER como `senai/esp32/estado`, ou informe no campo correspondente do HTML o valor que já estiver salvo no ESP32.
 
-## 3. Configurar a página
+Isso altera apenas a configuração salva pelo WiFiManager; não exige editar, compilar ou gravar o sketch.
 
-Na página Casa Conectada:
-1. Digite o mesmo usuário e senha configurados no EMQX.
-2. Confirme o endereço WSS já preenchido.
-3. Deixe desmarcada a opção de demonstração (modo hardware).
-4. Clique em **Conectar MQTT**.
-5. Use o botão da **Luz da sala**.
+## Credenciais
 
-O ESP32 recebe `ON` ou `OFF` no tópico `.../luz_sala/command` e publica o estado confirmado no tópico `.../luz_sala/state`, com retain habilitado. Assim, a página também recupera o último estado publicado quando se conecta.
+Digite no site o usuário e a senha cadastrados no EMQX. Não coloque credenciais no arquivo HTML público.
 
-## 4. LED integrado da placa
+## Hardware
 
-O firmware controla o LED integrado da própria placa, sem precisar conectar um LED externo.
+O sketch original já contém `digitalWrite(PIN_SALA_LUZ, on)` com `PIN_SALA_LUZ = 2`. A placa precisa ter o LED integrado ligado ao GPIO 2 e com polaridade compatível (HIGH acende).
 
-O código utiliza `LED_BUILTIN`, quando essa constante é definida pelo pacote de placas. Em placas ESP32 DevKit V1 comuns, o LED azul integrado costuma estar ligado ao GPIO 2; caso a definição não exista, o firmware usa GPIO 2 como padrão.
+A página mantém ar-condicionado, televisão e ventilador indisponíveis no modo hardware porque o ESP32 original enviado controla somente o LED da sala.
 
-A posição e a polaridade do LED integrado variam entre fabricantes e modelos. Se o LED não acender, confira o esquema da sua placa e ajuste `LED_BUILTIN` ou a lógica HIGH/LOW. O firmware assume que HIGH acende e LOW apaga.
+## Segurança
 
-O firmware mantém `net.setInsecure()` para simplificar o primeiro teste TLS. Isso criptografa o tráfego, mas não valida a identidade do servidor. Para uso definitivo, instale o certificado CA do EMQX e substitua por `net.setCACert()`.
-
-## 5. Publicar no GitHub
-
-Depois de testar localmente, envie para o repositório:
-- substitua `index.html` pelo arquivo atualizado;
-- adicione `ESP32_Luz_MQTT.ino`;
-- adicione este README, se desejar documentar o funcionamento.
-
-Não publique usuário/senha do broker. As credenciais do HTML são digitadas na própria página e as do ESP32 são configuradas no portal WiFiManager, ficando armazenadas localmente na SPIFFS.
+O firmware original utiliza `WiFiClientSecure::setInsecure()`. Para um projeto definitivo, substitua a validação insegura do certificado pela validação da CA do broker. Não compartilhe usuário e senha MQTT.
