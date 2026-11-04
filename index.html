@@ -212,7 +212,7 @@
           <div class="field">
             <label for="mqttPassword">Senha EMQX</label>
             <input id="mqttPassword" type="password" autocomplete="current-password" placeholder="Senha cadastrada no EMQX">
-            <div class="field-note">As credenciais são digitadas aqui no navegador e não ficam gravadas no HTML público do GitHub.</div>
+            <div class="field-note">As credenciais não ficam gravadas no GitHub. Após atualizar ou reabrir a página, digite novamente seu usuário e sua senha do EMQX.</div>
           </div>
         </div>
         <label class="check-line" for="demoMode">
@@ -429,8 +429,10 @@
         return;
       }
       if (!usernameInput.value.trim() || !passwordInput.value) {
-        showToast('Informe o usuário e a senha cadastrados no EMQX.');
-        usernameInput.focus();
+        const mensagem = 'Conexão não iniciada: informe novamente o usuário e a senha do EMQX.';
+        addLog(mensagem, 'error');
+        showToast(mensagem);
+        (!usernameInput.value.trim() ? usernameInput : passwordInput).focus();
         return;
       }
       if (!base || /[+#\s]/.test(base)) {
@@ -439,12 +441,16 @@
         return;
       }
       const statusTopic = normalizedStatusTopic();
-      if (!statusTopic || /[+#\s]/.test(statusTopic)) {
-        showToast('Informe o tópico PUBLISHER configurado no ESP32, sem espaços, + ou #.');
+      if (statusTopic && /[+#\s]/.test(statusTopic)) {
+        const mensagem = 'Tópico PUBLISHER inválido. Use um tópico MQTT sem espaços, + ou #.';
+        addLog(mensagem, 'error');
+        showToast(mensagem);
         statusTopicInput.focus();
         return;
       }
 
+      // O tópico PUB é necessário para receber o retorno do ESP32,
+      // mas não deve impedir a conexão principal com o broker.
       activeBaseTopic = base;
       activeStatusTopic = statusTopic;
       updateTopicExamples();
@@ -481,11 +487,14 @@
           `${activeBaseTopic}/sala/luz/estado`,
           `${activeBaseTopic}/+/state`,
           `${activeBaseTopic}/+/status`
-        ];
-        client.subscribe(stateTopics, { qos: 0 }, (error) => {
-          if (error) addLog(`Erro ao assinar tópicos de estado: ${error.message}`, 'error');
-          else addLog(`Inscrito em ${stateTopics.join(', ')}`, 'ok');
-        });
+        ].filter((topic, index, topics) => topic && topics.indexOf(topic) === index);
+
+        if (stateTopics.length > 0) {
+          client.subscribe(stateTopics, { qos: 0 }, (error) => {
+            if (error) addLog(`Conectado, mas houve falha ao assinar os tópicos de estado: ${error.message}`, 'error');
+            else addLog(`Inscrito em ${stateTopics.join(', ')}`, 'ok');
+          });
+        }
       });
       client.on('reconnect', () => {
         setConnectionStatus('connecting', 'Reconectando…');
@@ -496,11 +505,21 @@
         addLog('Cliente MQTT ficou offline.', 'warn');
       });
       client.on('close', () => {
-        if (client) setConnectionStatus('', 'Desconectado');
+        if (client) {
+          setConnectionStatus('', 'Conexão encerrada');
+          addLog('Conexão MQTT encerrada. O botão Conectar MQTT está disponível para tentar novamente.', 'warn');
+        }
         $('connectButton').disabled = false;
       });
       client.on('error', (error) => {
-        addLog(`Erro MQTT: ${error.message || 'não foi possível conectar'}`, 'error');
+        const detalhes = [
+          error && error.message ? error.message : 'não foi possível conectar',
+          error && error.code ? `código: ${error.code}` : ''
+        ].filter(Boolean).join(' | ');
+
+        setConnectionStatus('', 'Falha na conexão MQTT');
+        addLog(`Falha na conexão MQTT: ${detalhes}. Confira o endereço WSS e as credenciais do EMQX.`, 'error');
+        showToast('Falha na conexão MQTT. Consulte a seção Atividade MQTT.');
         $('connectButton').disabled = false;
       });
       client.on('message', receiveMessage);
